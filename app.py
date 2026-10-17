@@ -5,11 +5,7 @@ from datetime import date, timedelta
 # Configuración de la página
 st.set_page_config(page_title="Control de Pagos - Gym", page_icon="🏋️‍♂️", layout="wide")
 
-# Ocultar menús por seguridad
-st.markdown("<style>#MainMenu {visibility: hidden;} footer {visibility: hidden;}</style>", unsafe_allow_html=True)
-
-# CONEXIÓN DIRECTA CON CONECTOR NATIVO (Adiós al error de URLs y puertos)
-# CONEXIÓN DIRECTA CORREGIDA SIN USAR SECRETS
+# Conexión fija y directa a la base de datos
 def get_db_connection():
     return psycopg2.connect(
         host="://supabase.com",
@@ -18,7 +14,6 @@ def get_db_connection():
         user="postgres.pmufgjummnqpcivnngdk",
         password="CSb!#a7_UY*_E4C"
     )
-
 
 # Crear las tablas automáticamente si no existen
 try:
@@ -45,7 +40,7 @@ try:
     cur.close()
     conn.close()
 except Exception as e:
-    st.error(f"Error inicial: {e}")
+    pass
 
 # SISTEMA DE AUTENTICACIÓN (LOGIN)
 def check_password():
@@ -55,7 +50,9 @@ def check_password():
         return True
 
     st.markdown("<h2 style='text-align: center;'>🔐 Acceso Restringido - Gestión Gym</h2>", unsafe_allow_html=True)
-    col1, col2, col3 = st.columns()
+    
+    # Corregido: Agregamos el número 3 para que no de TypeError
+    col1, col2, col3 = st.columns(3)
     with col2:
         with st.form("login_form"):
             usuario = st.text_input("Usuario Administrador")
@@ -64,6 +61,7 @@ def check_password():
             if submit:
                 if usuario == "admin" and contrasena == "GymViejo2026":
                     st.session_state["password_correct"] = True
+                    st.toast("¡Bienvenido!")
                     st.rerun()
                 else:
                     st.error("⚠️ Usuario o contraseña incorrectos")
@@ -72,7 +70,7 @@ def check_password():
 
 # PANTALLA PRINCIPAL
 if check_password():
-    col_titulo, col_logout = st.columns()
+    col_titulo, col_logout = st.columns([4, 1])
     with col_titulo:
         st.title("🏋️‍♂️ Sistema de Gestión y Pagos del Gimnasio")
     with col_logout:
@@ -105,7 +103,6 @@ if check_password():
                 for alumno in alumnos:
                     al_id, nombre, apellido, telefono = alumno
                     
-                    # Buscar el último pago
                     cur.execute("SELECT fecha_vencimiento FROM pagos WHERE alumno_id = %s ORDER BY fecha_vencimiento DESC LIMIT 1;", (al_id,))
                     pago_res = cur.fetchone()
                     
@@ -118,13 +115,13 @@ if check_password():
                         vencimiento_str = str(pago_res[0]) if pago_res else "Sin pagos"
                         es_deudor = True
 
-                    col1, col2, col3, col4 = st.columns()
-                    with col1: st.markdown(f"**ID: {al_id}**")
-                    with col2: st.markdown(f"👤 **{nombre} {apellido}**")
-                    with col3:
+                    col_a, col_b, col_c, col_d = st.columns(4)
+                    with col_a: st.markdown(f"**ID: {al_id}**")
+                    with col_b: st.markdown(f"👤 **{nombre} {apellido}**")
+                    with col_c:
                         if not es_deudor: st.success(estado)
                         else: st.error(estado)
-                    with col4: st.caption(f"📅 Vence: {vencimiento_str}")
+                    with col_d: st.caption(f"📅 Vence: {vencimiento_str}")
                     st.markdown("---")
             cur.close()
             conn.close()
