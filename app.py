@@ -1,106 +1,147 @@
 import streamlit as st
-import requests
-from datetime import datetime
+from sqlalchemy import create_engine, Column, Integer, String, Date, Float, desc
+from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy.orm import sessionmaker
+from datetime import date, timedelta
 
 # Configuración de la página
 st.set_page_config(page_title="Control de Pagos - Gym", page_icon="🏋️‍♂️", layout="wide")
 
-# URL de nuestra API de FastAPI (asegúrate de usar el puerto 8080 que funcionó antes)
-API_URL = "http://127.0.0.1:8080"
+# Ocultar menús por seguridad
+st.markdown("<style>#MainMenu {visibility: hidden;} footer {visibility: hidden;}</style>", unsafe_allow_html=True)
 
-st.title("🏋️‍♂️ Sistema de Gestión y Pagos del Gimnasio")
-st.markdown("---")
+# CONEXIÓN DIRECTA A LA BASE DE DATOS
+DATABASE_URL = "postgresql://postgres.pmufgjummnqpcivnngdk:GymViejo2026@://supabase.com"
 
-# Creamos dos pestañas en la pantalla: una para ver el estado y otra para registrar datos
-tab_estado, tab_registro = st.tabs(["📋 Estado de Alumnos", "➕ Registrar Alumno / Pago"])
+engine = create_engine(DATABASE_URL)
+SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+Base = declarative_base()
 
-# ==========================================
-# PESTAÑA 1: ESTADO DE ALUMNOS Y BUSCADOR
-# ==========================================
-with tab_estado:
-    st.subheader("Socios Registrados")
-    
-    # Buscador de alumnos
-    buscar = st.text_input("🔍 Buscar alumno por nombre...", "")
-    
-    # Botón para actualizar la lista
-    if st.button("🔄 Actualizar Lista"):
-        st.rerun()
+# MODELOS DE BASE DE DATOS
+class Alumno(Base):
+    __tablename__ = "alumnos"
+    id = Column(Integer, primary_key=True, index=True)
+    nombre = Column(String, nullable=False)
+    apellido = Column(String, nullable=False)
+    telefono = Column(String)
 
-    # Traer datos desde FastAPI
-    try:
-        response = requests.get(f"{API_URL}/alumnos/estado/")
-        if response.status_code == 200:
-            alumnos = response.json()
+class Pago(Base):
+    __tablename__ = "pagos"
+    id = Column(Integer, primary_key=True, index=True)
+    alumno_id = Column(Integer)
+    monto = Column(Float, nullable=False)
+    fecha_pago = Column(Date, default=date.today)
+    fecha_vencimiento = Column(Date, nullable=False)
+
+Base.metadata.create_all(bind=engine)
+
+# SISTEMA DE AUTENTICACIÓN (LOGIN)
+def check_password():
+    if "password_correct" not in st.session_state:
+        st.session_state["password_correct"] = False
+    if st.session_state["password_correct"]:
+        return True
+
+    st.markdown("<h2 style='text-align: center;'>🔐 Acceso Restringido - Gestión Gym</h2>", unsafe_allow_html=True)
+    col1, col2, col3 = st.columns()
+    with col2:
+        with st.form("login_form"):
+            usuario = st.text_input("Usuario Administrador")
+            contrasena = st.text_input("Contraseña", type="password")
+            submit = st.form_submit_button("Ingresar al Sistema")
+            if submit:
+                if usuario == "admin" and contrasena == "GymViejo2026":
+                    st.session_state["password_correct"] = True
+                    st.rerun()
+                else:
+                    st.error("⚠️ Usuario o contraseña incorrectos")
+                    return False
+    return False
+
+# PANTALLA PRINCIPAL
+if check_password():
+    col_titulo, col_logout = st.columns()
+    with col_titulo:
+        st.title("🏋️‍♂️ Sistema de Gestión y Pagos del Gimnasio")
+    with col_logout:
+        if st.button("🚪 Cerrar Sesión"):
+            st.session_state["password_correct"] = False
+            st.rerun()
             
+    st.markdown("---")
+    tab_estado, tab_registro = st.tabs(["📋 Estado de Alumnos", "➕ Registrar Alumno / Pago"])
+
+    with tab_estado:
+        st.subheader("Socios Registrados")
+        buscar = st.text_input("🔍 Buscar alumno por nombre o apellido...", "")
+        if st.button("🔄 Actualizar Lista"):
+            st.rerun()
+
+        db = SessionLocal()
+        try:
+            alumnos = db.query(Alumno).all()
+            hoy = date.today()
             if not alumnos:
                 st.info("No hay alumnos registrados todavía.")
             else:
-                # Filtrar si hay una búsqueda activa
                 if buscar:
-                    alumnos = [a for a in alumnos if buscar.lower() in a["nombre_completo"].lower()]
-
-                # Mostrar las tarjetas o filas de alumnos
+                    alumnos = [a for a in alumnos if buscar.lower() in f"{a.nombre} {a.apellido}".lower()]
                 for alumno in alumnos:
-                    col1, col2, col3, col4 = st.columns([1, 3, 2, 2])
-                    
-                    with col1:
-                        st.markdown(f"**ID: {alumno['id']}**")
-                    with col2:
-                        st.markdown(f"👤 **{alumno['nombre_completo']}**")
-                    with col3:
-                        # Darle color al estado según corresponda
-                        if "🟢" in alumno["estado_pago"]:
-                            st.success(alumno["estado_pago"])
-                        else:
-                            st.error(alumno["estado_pago"])
-                    with col4:
-                        st.caption(f"📅 Vence: {alumno['fecha_vencimiento']}")
-                    st.markdown("---")
-        else:
-            st.error("Error al conectar con el servidor.")
-    except Exception as e:
-        st.error(f"Asegúrate de que FastAPI esté encendido en el puerto 8080. Error: {e}")
-
-# ==========================================
-# PESTAÑA 2: REGISTROS (ALUMNOS Y PAGOS)
-# ==========================================
-with tab_registro:
-    col_al, col_pa = st.columns(2)
-    
-    # Formulario para Nuevo Alumno
-    with col_al:
-        st.subheader("📝 Registrar Nuevo Alumno")
-        with st.form("form_alumno", clear_on_submit=True):
-            nombre = st.text_input("Nombre")
-            apellido = st.text_input("Apellido")
-            telefono = st.text_input("Teléfono (Opcional)")
-            btn_alumno = st.form_submit_button("Guardar Alumno")
-            
-            if btn_alumno:
-                if nombre and apellido:
-                    res = requests.post(f"{API_URL}/alumnos/?nombre={nombre}&apellido={apellido}&telefono={telefono}")
-                    if res.status_code == 200:
-                        st.success(f"¡{nombre} {apellido} registrado con éxito!")
+                    ultimo_pago = db.query(Pago).filter(Pago.alumno_id == alumno.id).order_by(desc(Pago.fecha_vencimiento)).first()
+                    if ultimo_pago and ultimo_pago.fecha_vencimiento >= hoy:
+                        estado = "🟢 AL DÍA"
+                        vencimiento_str = str(ultimo_pago.fecha_vencimiento)
+                        es_deudor = False
                     else:
-                        st.error("Hubo un problema al registrar.")
-                else:
-                    st.warning("Por favor completa nombre y apellido.")
+                        estado = "🔴 DEUDOR / VENCIDO"
+                        vencimiento_str = str(ultimo_pago.fecha_vencimiento) if ultimo_pago else "Sin pagos"
+                        es_deudor = True
 
-    # Formulario para Nuevo Pago
-    with col_pa:
-        st.subheader("💵 Registrar Pago de Cuota")
-        with st.form("form_pago", clear_on_submit=True):
-            alumno_id = st.number_input("ID del Alumno", min_value=1, step=1)
-            monto = st.number_input("Monto Pagado ($)", min_value=0.0, step=100.0)
-            meses = st.number_input("Meses a abonar", min_value=1, max_value=12, step=1)
-            btn_pago = st.form_submit_button("Cargar Pago")
-            
-            if btn_pago:
-                res = requests.post(f"{API_URL}/pagos/?alumno_id={alumno_id}&monto={monto}&meses_a_pagar={meses}")
-                if res.status_code == 200:
-                    st.success("¡Pago cargado correctamente! Estado actualizado.")
-                elif res.status_code == 404:
-                    st.error("El ID de alumno no existe.")
-                else:
-                    st.error("Error al procesar el pago.")
+                    col1, col2, col3, col4 = st.columns()
+                    with col1: st.markdown(f"**ID: {alumno.id}**")
+                    with col2: st.markdown(f"👤 **{alumno.nombre} {alumno.apellido}**")
+                    with col3:
+                        if not es_deudor: st.success(estado)
+                        else: st.error(estado)
+                    with col4: st.caption(f"📅 Vence: {vencimiento_str}")
+                    st.markdown("---")
+        finally:
+            db.close()
+
+    with tab_registro:
+        col_al, col_pa = st.columns(2)
+        with col_al:
+            st.subheader("📝 Registrar Nuevo Alumno")
+            with st.form("form_alumno", clear_on_submit=True):
+                nom = st.text_input("Nombre")
+                ape = st.text_input("Apellido")
+                tel = st.text_input("Teléfono (Opcional)")
+                if st.form_submit_button("Guardar Alumno") and nom and ape:
+                    db = SessionLocal()
+                    nuevo = Alumno(nombre=nom, apellido=ape, telefono=tel)
+                    db.add(nuevo)
+                    db.commit()
+                    db.close()
+                    st.success(f"¡{nom} {ape} registrado!")
+                    st.rerun()
+
+        with col_pa:
+            st.subheader("💵 Registrar Pago de Cuota")
+            with st.form("form_pago", clear_on_submit=True):
+                al_id = st.number_input("ID del Alumno", min_value=1, step=1)
+                mon = st.number_input("Monto Pagado ($)", min_value=0.0, step=100.0)
+                meses = st.number_input("Meses a abonar", min_value=1, max_value=12, step=1)
+                if st.form_submit_button("Cargar Pago"):
+                    db = SessionLocal()
+                    alumno_existe = db.query(Alumno).filter(Alumno.id == al_id).first()
+                    if alumno_existe:
+                        venc = date.today() + timedelta(days=30 * meses)
+                        nuevo_pago = Pago(alumno_id=al_id, monto=mon, fecha_vencimiento=venc)
+                        db.add(nuevo_pago)
+                        db.commit()
+                        db.close()
+                        st.success("¡Pago cargado correctamente!")
+                        st.rerun()
+                    else:
+                        db.close()
+                        st.error("El ID de alumno no existe.")
