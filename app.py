@@ -9,14 +9,16 @@ st.set_page_config(page_title="Control de Pagos - Gym", page_icon="🏋️‍♂
 st.markdown("<style>#MainMenu {visibility: hidden;} footer {visibility: hidden;}</style>", unsafe_allow_html=True)
 
 # CONEXIÓN DIRECTA CON CONECTOR NATIVO (Adiós al error de URLs y puertos)
+# CONEXIÓN DIRECTA CORREGIDA SIN USAR SECRETS
 def get_db_connection():
     return psycopg2.connect(
-        host=st.secrets["PGHOST"],
-        port=int(st.secrets["PGPORT"]),
-        database=st.secrets["PGDATABASE"],
-        user=st.secrets["PGUSER"],
-        password=st.secrets["PGPASSWORD"]
+        host="://supabase.com",
+        port=6543,
+        database="postgres",
+        user="postgres.pmufgjummnqpcivnngdk",
+        password="CSb!#a7_UY*_E4C"
     )
+
 
 # Crear las tablas automáticamente si no existen
 try:
