@@ -6,7 +6,7 @@ from sqlalchemy.orm import sessionmaker, Session
 from datetime import date, datetime
 
 # 1. Configuración de Base de Datos SQLite
-DATABASE_URL = "sqlite:///./gym.db"
+DATABASE_URL ="postgresql://postgres.pmufgjummnqpcivnngdk:CSb#!a7_UY*_E4C@://supabase.com"
 engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False})
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
