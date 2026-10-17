@@ -11,7 +11,7 @@ st.set_page_config(page_title="Control de Pagos - Gym", page_icon="🏋️‍♂
 st.markdown("<style>#MainMenu {visibility: hidden;} footer {visibility: hidden;}</style>", unsafe_allow_html=True)
 
 # CONEXIÓN DIRECTA A LA BASE DE DATOS
-DATABASE_URL = "postgresql://postgres.pmufgjummnqpcivnngdk:GymViejo2026@://supabase.com"
+DATABASE_URL = st.secrets["DATABASE_URL"]
 
 engine = create_engine(DATABASE_URL)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
