@@ -11,9 +11,17 @@ st.set_page_config(page_title="Control de Pagos - Gym", page_icon="🏋️‍♂
 st.markdown("<style>#MainMenu {visibility: hidden;} footer {visibility: hidden;}</style>", unsafe_allow_html=True)
 
 # 1. CONEXIÓN INTELIGENTE USANDO SECRETOS OCULTOS
-DATABASE_URL = st.secrets["DATABASE_URL"]
+# Conexión directa separando los parámetros
+import os
+h = st.secrets["PGHOST"]
+p = st.secrets["PGPORT"]
+db_name = st.secrets["PGDATABASE"]
+u = st.secrets["PGUSER"]
+pw = st.secrets["PGPASSWORD"]
 
+DATABASE_URL = f"postgresql://{u}:{pw}@{h}:{p}/{db_name}"
 engine = create_engine(DATABASE_URL)
+
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
 
