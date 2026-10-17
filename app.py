@@ -1,7 +1,5 @@
 import streamlit as st
-from sqlalchemy import create_engine, Column, Integer, String, Date, Float, desc
-from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import sessionmaker
+import psycopg2
 from datetime import date, timedelta
 
 # Configuración de la página
@@ -10,38 +8,42 @@ st.set_page_config(page_title="Control de Pagos - Gym", page_icon="🏋️‍♂
 # Ocultar menús por seguridad
 st.markdown("<style>#MainMenu {visibility: hidden;} footer {visibility: hidden;}</style>", unsafe_allow_html=True)
 
-# 1. CONEXIÓN INTELIGENTE USANDO SECRETOS OCULTOS
-# Conexión directa separando los parámetros
-import os
-h = st.secrets["PGHOST"]
-p = st.secrets["PGPORT"]
-db_name = st.secrets["PGDATABASE"]
-u = st.secrets["PGUSER"]
-pw = st.secrets["PGPASSWORD"]
+# CONEXIÓN DIRECTA CON CONECTOR NATIVO (Adiós al error de URLs y puertos)
+def get_db_connection():
+    return psycopg2.connect(
+        host=st.secrets["PGHOST"],
+        port=int(st.secrets["PGPORT"]),
+        database=st.secrets["PGDATABASE"],
+        user=st.secrets["PGUSER"],
+        password=st.secrets["PGPASSWORD"]
+    )
 
-DATABASE_URL = f"postgresql://{u}:{pw}@{h}:{p}/{db_name}"
-engine = create_engine(DATABASE_URL)
-
-SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
-Base = declarative_base()
-
-# MODELOS DE BASE DE DATOS
-class Alumno(Base):
-    __tablename__ = "alumnos"
-    id = Column(Integer, primary_key=True, index=True)
-    nombre = Column(String, nullable=False)
-    apellido = Column(String, nullable=False)
-    telefono = Column(String)
-
-class Pago(Base):
-    __tablename__ = "pagos"
-    id = Column(Integer, primary_key=True, index=True)
-    alumno_id = Column(Integer)
-    monto = Column(Float, nullable=False)
-    fecha_pago = Column(Date, default=date.today)
-    fecha_vencimiento = Column(Date, nullable=False)
-
-Base.metadata.create_all(bind=engine)
+# Crear las tablas automáticamente si no existen
+try:
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS alumnos (
+            id SERIAL PRIMARY KEY,
+            nombre VARCHAR(100) NOT NULL,
+            apellido VARCHAR(100) NOT NULL,
+            telefono VARCHAR(20)
+        );
+    """)
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS pagos (
+            id SERIAL PRIMARY KEY,
+            alumno_id INT,
+            monto FLOAT NOT NULL,
+            fecha_pago DATE DEFAULT CURRENT_DATE,
+            fecha_vencimiento DATE NOT NULL
+        );
+    """)
+    conn.commit()
+    cur.close()
+    conn.close()
+except Exception as e:
+    st.error(f"Error inicial: {e}")
 
 # SISTEMA DE AUTENTICACIÓN (LOGIN)
 def check_password():
@@ -85,36 +87,47 @@ if check_password():
         if st.button("🔄 Actualizar Lista"):
             st.rerun()
 
-        db = SessionLocal()
         try:
-            alumnos = db.query(Alumno).all()
+            conn = get_db_connection()
+            cur = conn.cursor()
+            cur.execute("SELECT id, nombre, apellido, telefono FROM alumnos;")
+            alumnos = cur.fetchall()
             hoy = date.today()
+            
             if not alumnos:
                 st.info("No hay alumnos registrados todavía.")
             else:
                 if buscar:
-                    alumnos = [a for a in alumnos if buscar.lower() in f"{a.nombre} {a.apellido}".lower()]
+                    alumnos = [a for a in alumnos if buscar.lower() in f"{a[1]} {a[2]}".lower()]
+                
                 for alumno in alumnos:
-                    ultimo_pago = db.query(Pago).filter(Pago.alumno_id == alumno.id).order_by(desc(Pago.fecha_vencimiento)).first()
-                    if ultimo_pago and ultimo_pago.fecha_vencimiento >= hoy:
+                    al_id, nombre, apellido, telefono = alumno
+                    
+                    # Buscar el último pago
+                    cur.execute("SELECT fecha_vencimiento FROM pagos WHERE alumno_id = %s ORDER BY fecha_vencimiento DESC LIMIT 1;", (al_id,))
+                    pago_res = cur.fetchone()
+                    
+                    if pago_res and pago_res[0] >= hoy:
                         estado = "🟢 AL DÍA"
-                        vencimiento_str = str(ultimo_pago.fecha_vencimiento)
+                        vencimiento_str = str(pago_res[0])
                         es_deudor = False
                     else:
                         estado = "🔴 DEUDOR / VENCIDO"
-                        vencimiento_str = str(ultimo_pago.fecha_vencimiento) if ultimo_pago else "Sin pagos"
+                        vencimiento_str = str(pago_res[0]) if pago_res else "Sin pagos"
                         es_deudor = True
 
                     col1, col2, col3, col4 = st.columns()
-                    with col1: st.markdown(f"**ID: {alumno.id}**")
-                    with col2: st.markdown(f"👤 **{alumno.nombre} {alumno.apellido}**")
+                    with col1: st.markdown(f"**ID: {al_id}**")
+                    with col2: st.markdown(f"👤 **{nombre} {apellido}**")
                     with col3:
                         if not es_deudor: st.success(estado)
                         else: st.error(estado)
                     with col4: st.caption(f"📅 Vence: {vencimiento_str}")
                     st.markdown("---")
-        finally:
-            db.close()
+            cur.close()
+            conn.close()
+        except Exception as e:
+            st.error(f"Error al leer datos: {e}")
 
     with tab_registro:
         col_al, col_pa = st.columns(2)
@@ -125,13 +138,17 @@ if check_password():
                 ape = st.text_input("Apellido")
                 tel = st.text_input("Teléfono (Opcional)")
                 if st.form_submit_button("Guardar Alumno") and nom and ape:
-                    db = SessionLocal()
-                    nuevo = Alumno(nombre=nom, apellido=ape, telefono=tel)
-                    db.add(nuevo)
-                    db.commit()
-                    db.close()
-                    st.success(f"¡{nom} {ape} registrado!")
-                    st.rerun()
+                    try:
+                        conn = get_db_connection()
+                        cur = conn.cursor()
+                        cur.execute("INSERT INTO alumnos (nombre, apellido, telefono) VALUES (%s, %s, %s);", (nom, ape, tel))
+                        conn.commit()
+                        cur.close()
+                        conn.close()
+                        st.success(f"¡{nom} {ape} registrado!")
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"Error al guardar: {e}")
 
         with col_pa:
             st.subheader("💵 Registrar Pago de Cuota")
@@ -140,16 +157,19 @@ if check_password():
                 mon = st.number_input("Monto Pagado ($)", min_value=0.0, step=100.0)
                 meses = st.number_input("Meses a abonar", min_value=1, max_value=12, step=1)
                 if st.form_submit_button("Cargar Pago"):
-                    db = SessionLocal()
-                    alumno_existe = db.query(Alumno).filter(Alumno.id == al_id).first()
-                    if alumno_existe:
-                        venc = date.today() + timedelta(days=30 * meses)
-                        nuevo_pago = Pago(alumno_id=al_id, monto=mon, fecha_vencimiento=venc)
-                        db.add(nuevo_pago)
-                        db.commit()
-                        db.close()
-                        st.success("¡Pago cargado correctamente!")
-                        st.rerun()
-                    else:
-                        db.close()
-                        st.error("El ID de alumno no existe.")
+                    try:
+                        conn = get_db_connection()
+                        cur = conn.cursor()
+                        cur.execute("SELECT id FROM alumnos WHERE id = %s;", (al_id,))
+                        if cur.fetchone():
+                            venc = date.today() + timedelta(days=30 * meses)
+                            cur.execute("INSERT INTO pagos (alumno_id, monto, fecha_vencimiento) VALUES (%s, %s, %s);", (al_id, mon, venc))
+                            conn.commit()
+                            st.success("¡Pago cargado correctamente!")
+                            st.rerun()
+                        else:
+                            st.error("El ID de alumno no existe.")
+                        cur.close()
+                        conn.close()
+                    except Exception as e:
+                        st.error(f"Error al procesar pago: {e}")
