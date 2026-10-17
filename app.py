@@ -11,7 +11,7 @@ st.set_page_config(page_title="Control de Pagos - Gym", page_icon="🏋️‍♂
 st.markdown("<style>#MainMenu {visibility: hidden;} footer {visibility: hidden;}</style>", unsafe_allow_html=True)
 
 # 1. CONEXIÓN DIRECTA CORREGIDA A TU SUPABASE (Zona: sa-east-1)
-DATABASE_URL = "postgresql://postgres.pmufgjummnqpcivnngdk:GymViejo2026@://supabase.com"
+DATABASE_URL = "postgresql://postgres.pmufgjummnqpcivnngdk:CSb%21%23a7_UY*_E4C@://supabase.com"
 
 engine = create_engine(DATABASE_URL)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
