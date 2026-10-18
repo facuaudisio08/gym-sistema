@@ -12,7 +12,7 @@ def get_db_connection():
         port=6543,
         database="postgres",
         user="postgres.pmufgjummnqpcivnngdk",
-        password="CSb!#a7_UY*_E4C"
+        password="stonegym606412796"
     )
 
 # Crear las tablas automáticamente si no existen
